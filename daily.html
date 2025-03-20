@@ -233,9 +233,14 @@
                 svg.setAttribute('viewBox', '0 0 100 100');
                 pieChart.appendChild(svg);
                 
+                // Sort speakers by talk time (descending) for the pie chart
+                const sortedSpeakersForPie = [...speakers].sort((a, b) => {
+                    return speakerTimers[b] - speakerTimers[a];
+                });
+                
                 // Calculate each speaker's percentage and draw pie slices
                 let startAngle = 0;
-                speakers.forEach((speaker, index) => {
+                sortedSpeakersForPie.forEach((speaker, index) => {
                     const time = speakerTimers[speaker];
                     if (time === 0) return; // Skip speakers with no time
                     
