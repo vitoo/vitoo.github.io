@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chronomètre de Daily</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .setup {
+            margin-bottom: 20px;
+        }
+        .setup input {
+            padding: 8px;
+            width: 70%;
+        }
+        .setup button {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .timers {
+            display: none;
+            margin-top: 30px;
+        }
+        .speakers {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .speaker-button {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .speaker-button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .total-timer {
+            background-color: #f0f0f0;
+            padding: 15px;
+            text-align: center;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        .controls button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            font-size: 1em;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .pause-button {
+            background-color: #f44336;
+            color: white;
+        }
+        .reset-button {
+            background-color: #2196F3;
+            color: white;
+        }
+        .ranking {
+            margin-top: 30px;
+        }
+        .ranking table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .ranking th, .ranking td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        .ranking th {
+            background-color: #f2f2f2;
+        }
+        .ranking tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .chart-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 30px;
+            margin-bottom: 30px;
+        }
+        .chart {
+            width: 300px;
+            height: 300px;
+            position: relative;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 10px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Chronomètre de Daily</h1>
+    
+    <div class="setup" id="setup">
+        <h2>Entrez les noms des intervenants</h2>
+        <p>Séparez les noms par une virgule (par exemple: Pierre, Marie, Jean, Sophie, Paul)</p>
+        <input type="text" id="speakers-input" placeholder="Noms des intervenants séparés par des virgules">
+        <button id="start-setup">Démarrer</button>
+    </div>
+    
+    <div class="timers" id="timers">
+        <h2>Cliquez sur l'intervenant actif</h2>
+        <div class="speakers" id="speakers-container"></div>
+        
+        <div class="total-timer" id="total-timer">
+            Temps total: 00:00
+        </div>
+        
+        <div class="controls">
+            <button id="pause-button" class="pause-button">Pause</button>
+            <button id="reset-button" class="reset-button">Réinitialiser</button>
+        </div>
+        
+        <div class="chart-container">
+            <h2>Répartition du temps de parole</h2>
+            <div class="chart" id="pie-chart"></div>
+            <div class="legend" id="chart-legend"></div>
+        </div>
+        
+        <div class="ranking" id="ranking">
+            <h2>Classement par temps de parole</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Intervenant</th>
+                        <th>Temps de parole</th>
+                    </tr>
+                </thead>
+                <tbody id="ranking-body">
+                    <!-- Ranking will be populated here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const setupSection = document.getElementById('setup');
+            const timersSection = document.getElementById('timers');
+            const speakersInput = document.getElementById('speakers-input');
+            const startSetupButton = document.getElementById('start-setup');
+            const speakersContainer = document.getElementById('speakers-container');
+            const totalTimerElement = document.getElementById('total-timer');
+            const pauseButton = document.getElementById('pause-button');
+            const resetButton = document.getElementById('reset-button');
+            const rankingBody = document.getElementById('ranking-body');
+            
+            let speakers = [];
+            let speakerTimers = {};
+            let activeSpeaker = null;
+            let isRunning = false;
+            let totalSeconds = 0;
+            let intervalId = null;
+            
+            // Colors for the pie chart (will cycle if more speakers than colors)
+            const colors = [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', 
+                '#FF9F40', '#8AC249', '#EA5545', '#F46A9B', '#EF9B20', 
+                '#5DBCD2', '#87BC45', '#A485DD', '#D6A4A4', '#A37474'
+            ];
+            
+            // Format seconds to MM:SS
+            function formatTime(seconds) {
+                const minutes = Math.floor(seconds / 60);
+                const remainingSeconds = seconds % 60;
+                return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+            }
+            
+            // Draw the pie chart
+            function drawPieChart() {
+                const pieChart = document.getElementById('pie-chart');
+                const legend = document.getElementById('chart-legend');
+                
+                // Clear previous chart and legend
+                pieChart.innerHTML = '';
+                legend.innerHTML = '';
+                
+                // Calculate total time (excluding zero times)
+                const totalTime = Object.values(speakerTimers).reduce((sum, time) => sum + time, 0);
+                
+                // Don't draw if no time recorded yet
+                if (totalTime === 0) {
+                    pieChart.innerHTML = '<div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">Aucune donnée</div>';
+                    return;
+                }
+                
+                // Create SVG element
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('width', '100%');
+                svg.setAttribute('height', '100%');
+                svg.setAttribute('viewBox', '0 0 100 100');
+                pieChart.appendChild(svg);
+                
+                // Calculate each speaker's percentage and draw pie slices
+                let startAngle = 0;
+                speakers.forEach((speaker, index) => {
+                    const time = speakerTimers[speaker];
+                    if (time === 0) return; // Skip speakers with no time
+                    
+                    const percentage = (time / totalTime) * 100;
+                    const color = colors[index % colors.length];
+                    
+                    // Convert percentage to angle (360 degrees)
+                    const angle = (percentage / 100) * 360;
+                    const endAngle = startAngle + angle;
+                    
+                    // Calculate the SVG arc path
+                    const x1 = 50 + 40 * Math.cos(Math.PI * startAngle / 180);
+                    const y1 = 50 + 40 * Math.sin(Math.PI * startAngle / 180);
+                    const x2 = 50 + 40 * Math.cos(Math.PI * endAngle / 180);
+                    const y2 = 50 + 40 * Math.sin(Math.PI * endAngle / 180);
+                    
+                    // Determine which arc to use (large or small)
+                    const largeArcFlag = angle > 180 ? 1 : 0;
+                    
+                    // Create the path for the slice
+                    const pathData = [
+                        'M', 50, 50,
+                        'L', x1, y1,
+                        'A', 40, 40, 0, largeArcFlag, 1, x2, y2,
+                        'Z'
+                    ].join(' ');
+                    
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', pathData);
+                    path.setAttribute('fill', color);
+                    svg.appendChild(path);
+                    
+                    // Add to legend
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+                    
+                    const legendColor = document.createElement('div');
+                    legendColor.className = 'legend-color';
+                    legendColor.style.backgroundColor = color;
+                    
+                    const legendText = document.createElement('span');
+                    legendText.textContent = `${speaker} (${percentage.toFixed(1)}%)`;
+                    
+                    legendItem.appendChild(legendColor);
+                    legendItem.appendChild(legendText);
+                    legend.appendChild(legendItem);
+                    
+                    // Update for next slice
+                    startAngle = endAngle;
+                });
+            }
+            
+            // Update the ranking table and pie chart
+            function updateRanking() {
+                // Sort speakers by talk time (descending)
+                const sortedSpeakers = [...speakers].sort((a, b) => {
+                    return speakerTimers[b] - speakerTimers[a];
+                });
+                
+                // Clear the current ranking
+                rankingBody.innerHTML = '';
+                
+                // Add each speaker to the ranking
+                sortedSpeakers.forEach(speaker => {
+                    const row = document.createElement('tr');
+                    const nameCell = document.createElement('td');
+                    const timeCell = document.createElement('td');
+                    
+                    nameCell.textContent = speaker;
+                    timeCell.textContent = formatTime(speakerTimers[speaker]);
+                    
+                    row.appendChild(nameCell);
+                    row.appendChild(timeCell);
+                    rankingBody.appendChild(row);
+                });
+                
+                // Update the pie chart
+                drawPieChart();
+            }
+            
+            // Start the timer functionality
+            function startTimers() {
+                intervalId = setInterval(() => {
+                    if (isRunning && activeSpeaker) {
+                        speakerTimers[activeSpeaker]++;
+                        totalSeconds++;
+                        
+                        // Update the active speaker's button text
+                        const activeSpeakerButton = document.querySelector(`.speaker-button[data-speaker="${activeSpeaker}"]`);
+                        if (activeSpeakerButton) {
+                            activeSpeakerButton.textContent = `${activeSpeaker}: ${formatTime(speakerTimers[activeSpeaker])}`;
+                        }
+                        
+                        // Update total timer
+                        totalTimerElement.textContent = `Temps total: ${formatTime(totalSeconds)}`;
+                        
+                        // Update the ranking
+                        updateRanking();
+                    }
+                }, 1000);
+            }
+            
+            // Set up the speakers
+            startSetupButton.addEventListener('click', () => {
+                const speakerNames = speakersInput.value.split(',').map(name => name.trim()).filter(name => name !== '');
+                
+                if (speakerNames.length === 0) {
+                    alert('Veuillez entrer au moins un nom d\'intervenant');
+                    return;
+                }
+                
+                // Store the speaker names and initialize their timers
+                speakers = speakerNames;
+                speakers.forEach(speaker => {
+                    speakerTimers[speaker] = 0;
+                });
+                
+                // Create speaker buttons
+                speakersContainer.innerHTML = '';
+                speakers.forEach(speaker => {
+                    const button = document.createElement('div');
+                    button.className = 'speaker-button';
+                    button.setAttribute('data-speaker', speaker);
+                    button.textContent = `${speaker}: 00:00`;
+                    
+                    button.addEventListener('click', () => {
+                        // If we're not running, don't do anything
+                        if (!isRunning) return;
+                        
+                        // Remove active class from all buttons
+                        document.querySelectorAll('.speaker-button').forEach(btn => {
+                            btn.classList.remove('active');
+                        });
+                        
+                        // Set this speaker as active
+                        activeSpeaker = speaker;
+                        button.classList.add('active');
+                    });
+                    
+                    speakersContainer.appendChild(button);
+                });
+                
+                // Initialize and show the timers section
+                setupSection.style.display = 'none';
+                timersSection.style.display = 'block';
+                
+                // Start running
+                isRunning = true;
+                startTimers();
+                
+                // Initialize the ranking and chart
+                updateRanking();
+                drawPieChart();
+            });
+            
+            // Pause/Resume button
+            pauseButton.addEventListener('click', () => {
+                isRunning = !isRunning;
+                
+                if (isRunning) {
+                    pauseButton.textContent = 'Pause';
+                    pauseButton.className = 'pause-button';
+                } else {
+                    pauseButton.textContent = 'Reprendre';
+                    pauseButton.className = 'controls-button';
+                    
+                    // Remove active state from all speakers when paused
+                    document.querySelectorAll('.speaker-button').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    activeSpeaker = null;
+                }
+            });
+            
+            // Reset button
+            resetButton.addEventListener('click', () => {
+                if (confirm('Êtes-vous sûr de vouloir réinitialiser tous les chronomètres?')) {
+                    // Reset all timers
+                    speakers.forEach(speaker => {
+                        speakerTimers[speaker] = 0;
+                        const speakerButton = document.querySelector(`.speaker-button[data-speaker="${speaker}"]`);
+                        if (speakerButton) {
+                            speakerButton.textContent = `${speaker}: 00:00`;
+                        }
+                    });
+                    
+                    // Reset total timer
+                    totalSeconds = 0;
+                    totalTimerElement.textContent = 'Temps total: 00:00';
+                    
+                    // Reset active speaker
+                    document.querySelectorAll('.speaker-button').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    activeSpeaker = null;
+                    
+                    // Update the ranking
+                    updateRanking();
+                    
+                    // Pause if running
+                    isRunning = false;
+                    pauseButton.textContent = 'Reprendre';
+                    pauseButton.className = 'controls-button';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
